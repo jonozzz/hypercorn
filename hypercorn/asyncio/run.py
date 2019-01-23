@@ -126,6 +126,7 @@ async def worker_serve(
     *,
     sockets: Optional[List[socket]] = None,
     shutdown_event: Optional[EventType] = None,
+    startup_event: Optional[EventType] = None,
 ) -> None:
     lifespan = Lifespan(app, config)
     lifespan_task = asyncio.ensure_future(lifespan.handle_lifespan())
@@ -172,6 +173,8 @@ async def worker_serve(
         for sock in sockets
     ]
 
+    if startup_event:
+        startup_event.set()
     reload_ = False
     try:
         gathered_tasks = asyncio.gather(*tasks)

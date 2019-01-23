@@ -13,6 +13,8 @@ from typing import Any, AnyStr, Dict, List, Mapping, Optional, Type, Union
 
 import pytoml
 
+from .logging import AccessLogger
+
 BYTES = 1
 OCTETS = 1
 SECONDS = 1.0
@@ -22,11 +24,12 @@ FilePath = Union[AnyStr, os.PathLike]
 
 class Config:
 
-    _access_log_target: Optional[str] = None
+    _access_logger: Optional[AccessLogger] = None
     _error_log_target: Optional[str] = None
 
     access_log_format = "%(h)s %(r)s %(s)s %(b)s %(D)s"
-    access_logger: Optional[logging.Logger] = None
+    access_log_target: Optional[str] = None
+    access_logger_class = AccessLogger
     alpn_protocols = ["h2", "http/1.1"]
     application_path: str
     backlog = 100
@@ -59,7 +62,15 @@ class Config:
 
     cert_reqs = property(None, set_cert_reqs)
 
-    def _set_host(self, value: str) -> None:
+    @property
+    def host(self) -> str:
+        # Remove in 0.6.0
+        warnings.warn("host is deprecated, please use bind instead", DeprecationWarning)
+        host, _ = self.bind[0].rsplit(":")
+        return host
+
+    @host.setter
+    def host(self, value: str) -> None:
         # Remove in 0.6.0
         warnings.warn("host is deprecated, please use bind instead", DeprecationWarning)
         if self.bind:
@@ -69,9 +80,15 @@ class Config:
         host = value
         self.bind = [f"{host}:{port}"]
 
-    host = property(None, _set_host)
+    @property
+    def port(self) -> int:
+        # Remove in 0.6.0
+        warnings.warn("port is deprecated, please use bind instead", DeprecationWarning)
+        _, port = self.bind[0].rsplit(":")
+        return int(port)
 
-    def _set_port(self, value: int) -> None:
+    @port.setter
+    def port(self, value: int) -> None:
         # Remove in 0.6.0
         warnings.warn("port is deprecated, please use bind instead", DeprecationWarning)
         if self.bind:
@@ -80,8 +97,6 @@ class Config:
             host = "127.0.0.1"
         port = str(value)
         self.bind = [f"{host}:{port}"]
-
-    port = property(None, _set_port)
 
     def _set_file_descriptor(self, value: int) -> None:
         # Remove in 0.6.0
@@ -98,19 +113,16 @@ class Config:
     unix_domain = property(None, _set_unix_domain)
 
     @property
-    def access_log_target(self) -> Optional[str]:
-        return self._access_log_target
+    def access_logger(self) -> AccessLogger:
+        if self._access_logger is None:
+            self._access_logger = self.access_logger_class(
+                self.access_log_format, self.access_log_target
+            )
+        return self._access_logger
 
-    @access_log_target.setter
-    def access_log_target(self, value: Optional[str]) -> None:
-        self._access_log_target = value
-        if self.access_log_target is not None:
-            self.access_logger = logging.getLogger("hypercorn.access")
-            if self.access_log_target == "-":
-                self.access_logger.addHandler(logging.StreamHandler(sys.stdout))
-            else:
-                self.access_logger.addHandler(logging.FileHandler(self.access_log_target))
-            self.access_logger.setLevel(logging.INFO)
+    @access_logger.setter
+    def access_logger(self, value: logging.Logger) -> None:
+        self._access_logger = self.access_logger_class(self.access_log_format, value)
 
     @property
     def error_log_target(self) -> Optional[str]:
@@ -121,6 +133,7 @@ class Config:
         self._error_log_target = value
         if self.error_log_target is not None:
             self.error_logger = logging.getLogger("hypercorn.error")
+            self.error_logger.handlers[:] = []
             if self.error_log_target == "-":
                 self.error_logger.addHandler(logging.StreamHandler(sys.stderr))
             else:

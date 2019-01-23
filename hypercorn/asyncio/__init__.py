@@ -1,12 +1,16 @@
 import warnings
-from typing import Type
+from typing import Type, Optional
 
 from .run import worker_serve
 from ..config import Config
 from ..typing import ASGIFramework
+from multiprocessing.synchronize import Event as EventType
 
 
-async def serve(app: Type[ASGIFramework], config: Config) -> None:
+async def serve(app: Type[ASGIFramework], config: Config,
+                shutdown_event: Optional[EventType] = None,
+                startup_event: Optional[EventType] = None
+                ) -> None:
     """Serve an ASGI framework app given the config.
 
     This allows for a programmatic way to serve an ASGI framework, it
@@ -28,4 +32,4 @@ async def serve(app: Type[ASGIFramework], config: Config) -> None:
     if config.worker_class != "asyncio":
         warnings.warn("The config `worker_class` has no affect when using serve", Warning)
 
-    await worker_serve(app, config)
+    await worker_serve(app, config, shutdown_event=shutdown_event, startup_event=startup_event)
