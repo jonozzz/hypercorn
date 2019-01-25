@@ -1,5 +1,3 @@
-import os
-import sys
 from functools import partial
 from multiprocessing.synchronize import Event as EventType
 from socket import socket
@@ -10,7 +8,14 @@ import trio
 from ..asgi.run import H2CProtocolRequired, H2ProtocolAssumed, WebsocketProtocolRequired
 from ..config import Config
 from ..typing import ASGIFramework
-from ..utils import check_shutdown, load_application, MustReloadException, observe_changes, Shutdown
+from ..utils import (
+    check_shutdown,
+    load_application,
+    MustReloadException,
+    observe_changes,
+    restart,
+    Shutdown,
+)
 from .h2 import H2Server
 from .h11 import H11Server
 from .lifespan import Lifespan
@@ -19,7 +24,10 @@ from .wsproto import WebsocketServer
 
 async def serve_stream(app: Type[ASGIFramework], config: Config, stream: trio.abc.Stream) -> None:
     if config.ssl_enabled:
-        await stream.do_handshake()
+        try:
+            await stream.do_handshake()
+        except trio.BrokenResourceError:
+            return  # Handshake failed
         selected_protocol = stream.selected_alpn_protocol()
     else:
         selected_protocol = "http/1.1"
@@ -91,8 +99,7 @@ async def worker_serve(
             lifespan_nursery.cancel_scope.cancel()
 
     if reload_:
-        # Restart this process (only safe for dev/debug)
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        restart()
 
 
 def trio_worker(
