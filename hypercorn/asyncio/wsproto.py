@@ -7,11 +7,11 @@ from wsproto.connection import ConnectionState
 from wsproto.events import CloseConnection, Event, Message, Ping, Request
 from wsproto.frame_protocol import CloseReason
 
+from .base import HTTPServer
 from ..asgi.utils import ASGIWebsocketState, FrameTooLarge, WebsocketBuffer
 from ..asgi.wsproto import WebsocketMixin
 from ..config import Config
 from ..typing import ASGIFramework
-from .base import HTTPServer
 
 
 class WebsocketServer(HTTPServer, WebsocketMixin):
@@ -89,6 +89,7 @@ class WebsocketServer(HTTPServer, WebsocketMixin):
             self.close()
 
     async def asend(self, event: Event) -> None:
+        await self.drain()
         self.write(self.connection.send(event))
 
     async def asgi_put(self, message: dict) -> None:

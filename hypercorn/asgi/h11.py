@@ -6,11 +6,11 @@ from urllib.parse import unquote
 
 import h11
 
+from .run import H2CProtocolRequired, H2ProtocolAssumed, WebsocketProtocolRequired
+from .utils import ASGIHTTPState, build_and_validate_headers, UnexpectedMessage
 from ..config import Config
 from ..typing import ASGIFramework, H11SendableEvent
 from ..utils import suppress_body
-from .run import H2CProtocolRequired, H2ProtocolAssumed, WebsocketProtocolRequired
-from .utils import ASGIHTTPState, UnexpectedMessage
 
 
 class H11Mixin:
@@ -130,13 +130,8 @@ class H11Mixin:
             ASGIHTTPState.RESPONSE,
         }:
             if self.state == ASGIHTTPState.REQUEST:
-                headers = chain(
-                    (
-                        (bytes(key).strip(), bytes(value).strip())
-                        for key, value in self.response["headers"]
-                    ),
-                    self.response_headers(),
-                )
+                headers = build_and_validate_headers(self.response["headers"])
+                headers.extend(self.response_headers())
                 await self.asend(
                     h11.Response(status_code=int(self.response["status"]), headers=headers)
                 )

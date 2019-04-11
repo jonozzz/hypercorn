@@ -1,5 +1,4 @@
 import asyncio
-from itertools import chain
 from time import time
 from typing import List, Optional, Tuple, Type, Union
 from urllib.parse import unquote
@@ -17,10 +16,15 @@ from wsproto.events import (
 from wsproto.extensions import PerMessageDeflate
 from wsproto.frame_protocol import CloseReason
 
+from .utils import (
+    ASGIWebsocketState,
+    build_and_validate_headers,
+    raise_if_subprotocol_present,
+    UnexpectedMessage,
+)
 from ..config import Config
 from ..typing import ASGIFramework
 from ..utils import suppress_body
-from .utils import ASGIWebsocketState, UnexpectedMessage
 
 
 class WebsocketMixin:
@@ -105,7 +109,16 @@ class WebsocketMixin:
     async def asgi_send(self, message: dict) -> None:
         """Called by the ASGI instance to send a message."""
         if message["type"] == "websocket.accept" and self.state == ASGIWebsocketState.HANDSHAKE:
-            await self.asend(AcceptConnection(extensions=[PerMessageDeflate()]))
+            headers = build_and_validate_headers(message.get("headers", []))
+            raise_if_subprotocol_present(headers)
+            headers.extend(self.response_headers())
+            await self.asend(
+                AcceptConnection(
+                    extensions=[PerMessageDeflate()],
+                    extra_headers=headers,
+                    subprotocol=message.get("subprotocol"),
+                )
+            )
             self.state = ASGIWebsocketState.CONNECTED
             self.config.access_logger.access(
                 self.scope, {"status": 101, "headers": []}, time() - self.start_time
@@ -141,13 +154,8 @@ class WebsocketMixin:
     async def _asgi_send_rejection(self, message: dict) -> None:
         body_suppressed = suppress_body("GET", self.response["status"])
         if self.state == ASGIWebsocketState.HANDSHAKE:
-            headers = chain(
-                [
-                    (bytes(key).strip(), bytes(value).strip())
-                    for key, value in self.response["headers"]
-                ],
-                self.response_headers(),
-            )
+            headers = build_and_validate_headers(self.response["headers"])
+            headers.extend(self.response_headers())
             await self.asend(
                 RejectConnection(
                     status_code=int(self.response["status"]),
