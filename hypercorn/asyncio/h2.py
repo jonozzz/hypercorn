@@ -256,6 +256,8 @@ class H2Server(HTTPServer):
 
     async def asend(self, stream_id: int, event: H2Event) -> None:
         connection_state = self.connection.state_machine.state
+        if stream_id not in self.connection.streams:
+            return
         stream_state = self.connection.streams[stream_id].state_machine.state
         if (
             connection_state == h2.connection.ConnectionState.CLOSED
