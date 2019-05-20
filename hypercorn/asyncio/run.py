@@ -193,6 +193,8 @@ async def worker_serve(
         for server in servers:
             server.close()
             await server.wait_closed()
+        for task in tasks:
+            task.cancel()
         # Retrieve the Gathered Tasks Cancelled Exception, to
         # prevent a warning that this hasn't been done.
         gathered_tasks.exception()
